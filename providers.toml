@@ -1,0 +1,31 @@
+[[provider]]
+name          = "openai"
+base_url      = "https://api.openai.com/v1"
+default_model = "gpt-4.1-mini"
+models        = [
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
+    "gpt-4o",
+]
+
+[[provider]]
+name          = "openai-responses"
+base_url      = "https://api.openai.com/v1"
+default_model = "o3"
+models        = [
+    "o3",
+    "o4-mini",
+]
+
+[[provider]]
+name          = "anthropic"
+base_url      = "https://api.anthropic.com/v1"
+default_model = "claude-sonnet-4-6"
+api_version   = "2023-06-01"
+max_tokens    = 4096
+models        = [
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+]

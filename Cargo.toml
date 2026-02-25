@@ -1,0 +1,41 @@
+[package]
+name    = "zuro"
+version = "0.1.0"
+edition = "2021"
+
+description = "Minimalist terminal LLM client with sessions, memory, context pool, and named commands"
+keywords    = ["llm", "ai", "cli", "openai", "anthropic"]
+categories  = ["command-line-utilities"]
+license     = "MIT"
+readme      = "README.md"
+authors     = ["Alexandr <Lispython@users.noreply.github.com>"]
+repository  = "https://github.com/ai-mode/zuro"
+homepage    = "https://github.com/ai-mode/zuro"
+
+include = ["src/**/*", ".zuro/**/*", "Cargo.toml", "LICENSE", "README.md", "CHANGELOG.md"]
+
+[[bin]]
+name = "zuro"
+path = "src/main.rs"
+
+[dependencies]
+anyhow   = "1"
+clap     = { version = "4.5", features = ["derive"] }
+serde    = { version = "1",   features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml     = "0.8"
+ureq     = { version = "3.2", features = ["json"] }
+dirs     = "5"
+uuid     = { version = "1",   features = ["v4"] }
+chrono   = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+fd-lock  = "4"
+once_cell = "1"
+minijinja   = "2"
+include_dir = "0.7"
+ignore      = "0.4"
+shell-words = "1"
+
+[dev-dependencies]
+tempfile = "3"
+httpmock = "0.7"
