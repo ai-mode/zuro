@@ -70,8 +70,8 @@ fn run() -> anyhow::Result<()> {
             }
             Commands::Context { action } => {
                 let session_id = session::resolve(cli.session.as_deref(), &data_dir)?;
-                let sess = Session::open(&data_dir, &session_id)?;
-                handle_context(action, &sess, cli.verbose)
+                let session = Session::open(&data_dir, &session_id)?;
+                handle_context(action, &session, cli.verbose)
             }
         };
     }
@@ -88,16 +88,27 @@ fn run() -> anyhow::Result<()> {
     let mut actual_cfg = profile_cfg.clone();
     if let Some(m) = &cli.model { actual_cfg.model = m.clone(); }
 
-    let project_root = commands::find_project_root();
-    let session_id   = session::resolve(cli.session.as_deref(), &data_dir)?;
-    let sess         = Session::open(&data_dir, &session_id)?;
+    anyhow::ensure!(
+        !(cli.no_session && cli.session.is_some()),
+        "--no-session and --session are mutually exclusive"
+    );
 
-    let memory       = memory::load_memory(project_root.as_deref());
-    let pool_items   = pool::load_pool(&sess.dir)?;
-    let shell        = config::resolve_shell(&config.default);
-    let resolved     = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
-    let system_msg   = providers::assemble_system_message(project_root.as_deref(), cli.verbose);
-    let user_prefix  = providers::assemble_user_prefix(&memory, &resolved, &[], cli.verbose);
+    let project_root = commands::find_project_root();
+
+    let (session_opt, resolved) = if cli.no_session {
+        (None, vec![])
+    } else {
+        let session_id = session::resolve(cli.session.as_deref(), &data_dir)?;
+        let session       = Session::open(&data_dir, &session_id)?;
+        let pool_items = pool::load_pool(&session.dir)?;
+        let shell      = config::resolve_shell(&config.default);
+        let expanded   = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
+        (Some(session), expanded)
+    };
+
+    let memory      = memory::load_memory(project_root.as_deref());
+    let system_msg  = providers::assemble_system_message(project_root.as_deref(), cli.verbose);
+    let user_prefix = providers::assemble_user_prefix(&memory, &resolved, &[], cli.verbose);
 
     let final_user_content = combine_prefix_and_prompt(&user_prefix, &prompt);
     let exchange_id        = Uuid::new_v4().to_string();
@@ -106,7 +117,9 @@ fn run() -> anyhow::Result<()> {
     if !system_msg.is_empty() {
         messages.push(ChatMessage::system(system_msg));
     }
-    messages.extend(build_history(&sess, cli.no_log, None)?);
+    if let Some(ref session) = session_opt {
+        messages.extend(build_history(session, cli.no_log, None)?);
+    }
     messages.push(ChatMessage::user(final_user_content));
 
     let prov = make_provider(&actual_cfg, Duration::from_secs(TIMEOUT_CHAT_SECS))?;
@@ -117,20 +130,22 @@ fn run() -> anyhow::Result<()> {
     }
 
     if !cli.no_log {
-        sess.append(&session::Exchange::now("user", prompt.clone(), session::ExchangeMeta {
-            exchange_id: Some(exchange_id.clone()),
-            ..Default::default()
-        }))?;
+        if let Some(ref session) = session_opt {
+            session.append(&session::Exchange::now("user", prompt.clone(), session::ExchangeMeta {
+                exchange_id: Some(exchange_id.clone()),
+                ..Default::default()
+            }))?;
+        }
     }
 
     let show_stats = cli.stats || config.default.show_stats;
-    execute_chat_and_log(&*prov, &messages, &sess, exchange_id, profile_name, &cli, show_stats)
+    execute_chat_and_log(&*prov, &messages, session_opt.as_ref(), exchange_id, profile_name, &cli, show_stats)
 }
 
 fn execute_chat_and_log(
     prov:         &dyn Provider,
     messages:     &[ChatMessage],
-    sess:         &Session,
+    session:         Option<&Session>,
     exchange_id:  String,
     profile_name: String,
     cli:          &Cli,
@@ -148,23 +163,26 @@ fn execute_chat_and_log(
     if cli.stream && !json { println!(); }
 
     if !cli.no_log {
-        sess.append(&session::Exchange::now(
-            "assistant",
-            resp.content.clone(),
-            session::ExchangeMeta {
-                exchange_id: Some(exchange_id),
-                model:       Some(resp.model.clone()),
-                provider:    Some(profile_name),
-                duration_ms,
-                usage: resp.usage.as_ref().map(|u| session::TokenUsage {
-                    input_tokens:  u.input_tokens,
-                    output_tokens: u.output_tokens,
-                }),
-            },
-        ))?;
+        if let Some(session) = session {
+            session.append(&session::Exchange::now(
+                "assistant",
+                resp.content.clone(),
+                session::ExchangeMeta {
+                    exchange_id: Some(exchange_id),
+                    model:       Some(resp.model.clone()),
+                    provider:    Some(profile_name),
+                    duration_ms,
+                    usage: resp.usage.as_ref().map(|u| session::TokenUsage {
+                        input_tokens:  u.input_tokens,
+                        output_tokens: u.output_tokens,
+                    }),
+                },
+            ))?;
+        }
     }
 
-    print_response(&resp.content, &resp.model, resp.usage.as_ref(), json, &sess.id, show_stats);
+    let session_id = session.map(|session| session.id.as_str()).unwrap_or("-");
+    print_response(&resp.content, &resp.model, resp.usage.as_ref(), json, session_id, show_stats);
     Ok(())
 }
 
@@ -195,21 +213,26 @@ fn handle_run(
     let mut actual_cfg = profile_cfg.clone();
     if let Some(m) = &cli.model { actual_cfg.model = m.clone(); }
 
-    let session_id = session::resolve(cli.session.as_deref(), data_dir)?;
-    let sess       = Session::open(data_dir, &session_id)?;
+    let (session_opt, resolved) = if cli.no_session {
+        (None, vec![])
+    } else {
+        let session_id = session::resolve(cli.session.as_deref(), data_dir)?;
+        let session       = Session::open(data_dir, &session_id)?;
+        let pool_items = pool::load_pool(&session.dir)?;
+        let shell      = config::resolve_shell(&config.default);
+        let expanded   = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
+        (Some(session), expanded)
+    };
 
-    let memory     = memory::load_memory(project_root);
-    let pool_items = pool::load_pool(&sess.dir)?;
-    let shell      = config::resolve_shell(&config.default);
-    let resolved   = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
-
+    let memory      = memory::load_memory(project_root);
     let system_msg  = providers::assemble_system_message(project_root, cli.verbose);
     let user_prefix = providers::assemble_user_prefix(&memory, &resolved, &file_args, cli.verbose);
 
-    let cwd  = std::env::current_dir()
+    let cwd        = std::env::current_dir()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let date = Local::now().format("%Y-%m-%d").to_string();
+    let date       = Local::now().format("%Y-%m-%d").to_string();
+    let session_id = session_opt.as_ref().map(|s| s.id.clone()).unwrap_or_default();
 
     let ctx = TemplateContext {
         stdin:      stdin_content.as_deref(),
@@ -231,7 +254,9 @@ fn handle_run(
     if !system_msg.is_empty() {
         messages.push(ChatMessage::system(system_msg));
     }
-    messages.extend(build_history(&sess, cli.no_log, history_limit(&cmd_def))?);
+    if let Some(ref session) = session_opt {
+        messages.extend(build_history(session, cli.no_log, history_limit(&cmd_def))?);
+    }
     messages.push(ChatMessage::user(final_user_content));
 
     let prov = make_provider(&actual_cfg, Duration::from_secs(TIMEOUT_CHAT_SECS))?;
@@ -242,14 +267,16 @@ fn handle_run(
     }
 
     if !cli.no_log {
-        sess.append(&session::Exchange::now("user", final_prompt.clone(), session::ExchangeMeta {
-            exchange_id: Some(exchange_id.clone()),
-            ..Default::default()
-        }))?;
+        if let Some(ref session) = session_opt {
+            session.append(&session::Exchange::now("user", final_prompt.clone(), session::ExchangeMeta {
+                exchange_id: Some(exchange_id.clone()),
+                ..Default::default()
+            }))?;
+        }
     }
 
     let show_stats = cli.stats || config.default.show_stats;
-    execute_chat_and_log(&*prov, &messages, &sess, exchange_id, profile_name, cli, show_stats)
+    execute_chat_and_log(&*prov, &messages, session_opt.as_ref(), exchange_id, profile_name, cli, show_stats)
 }
 
 fn collect_inputs(
@@ -413,7 +440,7 @@ fn handle_memory(action: MemoryAction, project_root: Option<&Path>) -> anyhow::R
     Ok(())
 }
 
-fn handle_context(action: CtxAction, sess: &Session, verbose: bool) -> anyhow::Result<()> {
+fn handle_context(action: CtxAction, session: &Session, verbose: bool) -> anyhow::Result<()> {
     match action {
         CtxAction::Add { paths, text, cmd } => {
             let cwd = std::env::current_dir()?;
@@ -448,11 +475,11 @@ fn handle_context(action: CtxAction, sess: &Session, verbose: bool) -> anyhow::R
                 items.push(PoolItem::Command { cmd: c });
             }
 
-            pool::add_items(&sess.dir, items)?;
+            pool::add_items(&session.dir, items)?;
             if verbose { eprintln!("[context] pool updated"); }
         }
         CtxAction::List => {
-            let items = pool::load_pool(&sess.dir)?;
+            let items = pool::load_pool(&session.dir)?;
             if items.is_empty() {
                 println!("Pool is empty.");
             } else {
@@ -462,7 +489,7 @@ fn handle_context(action: CtxAction, sess: &Session, verbose: bool) -> anyhow::R
             }
         }
         CtxAction::Remove => {
-            let items = pool::load_pool(&sess.dir)?;
+            let items = pool::load_pool(&session.dir)?;
             if items.is_empty() {
                 println!("Pool is empty.");
                 return Ok(());
@@ -476,11 +503,11 @@ fn handle_context(action: CtxAction, sess: &Session, verbose: bool) -> anyhow::R
             io::stdin().lock().read_line(&mut line)?;
             let idx: usize = line.trim().parse()
                 .map_err(|_| anyhow::anyhow!("Invalid index"))?;
-            pool::remove_item(&sess.dir, idx)?;
+            pool::remove_item(&session.dir, idx)?;
             eprintln!("Item {idx} removed.");
         }
         CtxAction::Clear => {
-            pool::clear_pool(&sess.dir)?;
+            pool::clear_pool(&session.dir)?;
             eprintln!("Pool cleared.");
         }
     }
@@ -569,9 +596,9 @@ fn resolve_prompt(cli: &Cli) -> anyhow::Result<Option<String>> {
     Ok(None)
 }
 
-fn build_history(sess: &Session, no_log: bool, limit: Option<usize>) -> anyhow::Result<Vec<ChatMessage>> {
+fn build_history(session: &Session, no_log: bool, limit: Option<usize>) -> anyhow::Result<Vec<ChatMessage>> {
     if no_log { return Ok(vec![]); }
-    let all = sess.load_exchanges()?;
+    let all = session.load_exchanges()?;
     let exchanges = match limit {
         Some(n) => {
             let skip = all.len().saturating_sub(n);
@@ -659,9 +686,9 @@ fn handle_session(
 ) -> anyhow::Result<()> {
     match action {
         SessionAction::New => {
-            let sess = Session::create(data_dir)?;
-            println!("export ZURO_SESSION={}", sess.id);
-            eprintln!("# New session: {}", &sess.id[..SESSION_ID_PREFIX_LEN]);
+            let session = Session::create(data_dir)?;
+            println!("export ZURO_SESSION={}", session.id);
+            eprintln!("# New session: {}", &session.id[..SESSION_ID_PREFIX_LEN]);
             eprintln!("# Run: eval $(zuro session new)  — or add shell integration (see README)");
         }
         SessionAction::Fork { at } => {
@@ -716,8 +743,8 @@ fn handle_session(
         }
         SessionAction::Show { id, format } => {
             let id        = resolve_session_arg(id, data_dir)?;
-            let sess      = Session::open(data_dir, &id)?;
-            let exchanges = sess.load_exchanges()?;
+            let session      = Session::open(data_dir, &id)?;
+            let exchanges = session.load_exchanges()?;
             print_session_show(&exchanges, &format);
         }
         SessionAction::Stats { id } => {

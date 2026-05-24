@@ -148,17 +148,17 @@ mod tests {
     #[test]
     fn create_returns_session_with_valid_id_and_dir() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        assert_eq!(sess.id.len(), 36);
-        assert!(sess.dir.is_dir());
+        let session = Session::create(tmp.path()).unwrap();
+        assert_eq!(session.id.len(), 36);
+        assert!(session.dir.is_dir());
     }
 
     #[test]
     fn open_existing_session() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        let opened = Session::open(tmp.path(), &sess.id).unwrap();
-        assert_eq!(opened.id, sess.id);
+        let session = Session::create(tmp.path()).unwrap();
+        let opened = Session::open(tmp.path(), &session.id).unwrap();
+        assert_eq!(opened.id, session.id);
     }
 
     #[test]
@@ -171,11 +171,11 @@ mod tests {
     #[test]
     fn append_and_load_exchanges_in_order() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        sess.append(&make_exchange("user", "hello")).unwrap();
-        sess.append(&make_exchange("assistant", "world")).unwrap();
-        sess.append(&make_exchange("user", "again")).unwrap();
-        let exchanges = sess.load_exchanges().unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        session.append(&make_exchange("user", "hello")).unwrap();
+        session.append(&make_exchange("assistant", "world")).unwrap();
+        session.append(&make_exchange("user", "again")).unwrap();
+        let exchanges = session.load_exchanges().unwrap();
         assert_eq!(exchanges.len(), 3);
         assert_eq!(exchanges[0].role, "user");
         assert_eq!(exchanges[0].content, "hello");
@@ -186,22 +186,22 @@ mod tests {
     #[test]
     fn load_exchanges_empty_when_no_history_file() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        let exchanges = sess.load_exchanges().unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        let exchanges = session.load_exchanges().unwrap();
         assert!(exchanges.is_empty());
     }
 
     #[test]
     fn load_exchanges_skips_malformed_lines() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        sess.append(&make_exchange("user", "good")).unwrap();
-        let hist = history_path(&sess.dir);
+        let session = Session::create(tmp.path()).unwrap();
+        session.append(&make_exchange("user", "good")).unwrap();
+        let hist = history_path(&session.dir);
         let mut f = std::fs::OpenOptions::new().append(true).open(&hist).unwrap();
         use std::io::Write;
         writeln!(f, "{{bad json}}").unwrap();
-        sess.append(&make_exchange("assistant", "also good")).unwrap();
-        let exchanges = sess.load_exchanges().unwrap();
+        session.append(&make_exchange("assistant", "also good")).unwrap();
+        let exchanges = session.load_exchanges().unwrap();
         assert_eq!(exchanges.len(), 2);
         assert_eq!(exchanges[0].content, "good");
         assert_eq!(exchanges[1].content, "also good");
@@ -210,10 +210,10 @@ mod tests {
     #[test]
     fn fork_copies_history() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        sess.append(&make_exchange("user", "a")).unwrap();
-        sess.append(&make_exchange("assistant", "b")).unwrap();
-        let forked = sess.fork(tmp.path()).unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        session.append(&make_exchange("user", "a")).unwrap();
+        session.append(&make_exchange("assistant", "b")).unwrap();
+        let forked = session.fork(tmp.path()).unwrap();
         let exchanges = forked.load_exchanges().unwrap();
         assert_eq!(exchanges.len(), 2);
         assert_eq!(exchanges[0].content, "a");
@@ -222,34 +222,34 @@ mod tests {
     #[test]
     fn fork_does_not_copy_pool() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        fs::write(sess.dir.join("pool.json"), "[]").unwrap();
-        let forked = sess.fork(tmp.path()).unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        fs::write(session.dir.join("pool.json"), "[]").unwrap();
+        let forked = session.fork(tmp.path()).unwrap();
         assert!(!forked.dir.join("pool.json").exists());
     }
 
     #[test]
     fn fork_sets_forked_from_in_header() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        let forked = sess.fork(tmp.path()).unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        let forked = session.fork(tmp.path()).unwrap();
         let header = forked.load_header().unwrap().unwrap();
-        assert_eq!(header.forked_from, Some(sess.id.clone()));
+        assert_eq!(header.forked_from, Some(session.id.clone()));
     }
 
     #[test]
     fn fork_at_truncates_at_exchange() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        sess.append(&make_exchange("user", "q1")).unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        session.append(&make_exchange("user", "q1")).unwrap();
         let ex = Exchange::now("assistant", "a1".to_string(), ExchangeMeta {
             exchange_id: Some("test-exchange-id".to_string()),
             ..Default::default()
         });
-        sess.append(&ex).unwrap();
-        sess.append(&make_exchange("user", "q2")).unwrap();
-        sess.append(&make_exchange("assistant", "a2")).unwrap();
-        let forked = sess.fork_at(tmp.path(), "test-exchange-id").unwrap();
+        session.append(&ex).unwrap();
+        session.append(&make_exchange("user", "q2")).unwrap();
+        session.append(&make_exchange("assistant", "a2")).unwrap();
+        let forked = session.fork_at(tmp.path(), "test-exchange-id").unwrap();
         let exchanges = forked.load_exchanges().unwrap();
         assert_eq!(exchanges.len(), 2);
         assert_eq!(exchanges[1].content, "a1");
@@ -258,9 +258,9 @@ mod tests {
     #[test]
     fn fork_at_unknown_prefix_errors() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        sess.append(&make_exchange("user", "q")).unwrap();
-        let result = sess.fork_at(tmp.path(), "nonexistent-prefix");
+        let session = Session::create(tmp.path()).unwrap();
+        session.append(&make_exchange("user", "q")).unwrap();
+        let result = session.fork_at(tmp.path(), "nonexistent-prefix");
         assert!(result.is_err());
     }
 }

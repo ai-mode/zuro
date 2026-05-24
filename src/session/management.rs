@@ -36,10 +36,10 @@ pub fn list(data_dir: &Path) -> anyhow::Result<Vec<SessionInfo>> {
         let id = entry.path()
             .file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
         let updated_at  = format_history_mtime(&entry);
-        let sess        = Session::open(data_dir, &id)?;
-        let exchanges   = sess.load_exchanges().unwrap_or_default();
+        let session        = Session::open(data_dir, &id)?;
+        let exchanges   = session.load_exchanges().unwrap_or_default();
         let (tokens_in, tokens_out, duration_ms) = sum_session_tokens(&exchanges);
-        let (created_at, forked_from, forked_at_exchange) = sess.load_header()
+        let (created_at, forked_from, forked_at_exchange) = session.load_header()
             .ok().flatten()
             .map(|h| (
                 Some(format_session_timestamp(&h.created_at)),
@@ -68,8 +68,8 @@ fn format_session_timestamp(ts: &str) -> String {
 }
 
 pub fn stats(data_dir: &Path, id: &str) -> anyhow::Result<SessionStats> {
-    let sess      = Session::open(data_dir, id)?;
-    let exchanges = sess.load_exchanges()?;
+    let session      = Session::open(data_dir, id)?;
+    let exchanges = session.load_exchanges()?;
 
     let mut result       = Vec::new();
     let mut total_input  = 0u32;
@@ -207,10 +207,10 @@ mod tests {
     #[test]
     fn resolve_prefix_finds_unique_match() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        let prefix = &sess.id[..8];
+        let session = Session::create(tmp.path()).unwrap();
+        let prefix = &session.id[..8];
         let found = resolve_prefix(tmp.path(), prefix).unwrap();
-        assert_eq!(found, sess.id);
+        assert_eq!(found, session.id);
     }
 
     #[test]
@@ -224,10 +224,10 @@ mod tests {
     #[test]
     fn delete_removes_session_dir() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        assert!(sess.dir.is_dir());
-        delete(tmp.path(), &sess.id).unwrap();
-        assert!(!sess.dir.exists());
+        let session = Session::create(tmp.path()).unwrap();
+        assert!(session.dir.is_dir());
+        delete(tmp.path(), &session.id).unwrap();
+        assert!(!session.dir.exists());
     }
 
     #[test]
@@ -252,22 +252,22 @@ mod tests {
     #[test]
     fn stats_returns_token_totals() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        sess.append(&make_exchange("user", "q1")).unwrap();
-        sess.append(&Exchange::now("assistant", "a1".to_string(), ExchangeMeta {
+        let session = Session::create(tmp.path()).unwrap();
+        session.append(&make_exchange("user", "q1")).unwrap();
+        session.append(&Exchange::now("assistant", "a1".to_string(), ExchangeMeta {
             usage: Some(TokenUsage { input_tokens: Some(10), output_tokens: Some(5) }),
             duration_ms: Some(200),
             model: Some("gpt-4.1-mini".into()),
             ..Default::default()
         })).unwrap();
-        sess.append(&make_exchange("user", "q2")).unwrap();
-        sess.append(&Exchange::now("assistant", "a2".to_string(), ExchangeMeta {
+        session.append(&make_exchange("user", "q2")).unwrap();
+        session.append(&Exchange::now("assistant", "a2".to_string(), ExchangeMeta {
             usage: Some(TokenUsage { input_tokens: Some(8), output_tokens: Some(3) }),
             duration_ms: Some(150),
             model: Some("gpt-4.1-mini".into()),
             ..Default::default()
         })).unwrap();
-        let s = stats(tmp.path(), &sess.id).unwrap();
+        let s = stats(tmp.path(), &session.id).unwrap();
         assert_eq!(s.total_input, 18);
         assert_eq!(s.total_output, 8);
         assert_eq!(s.total_dur_ms, 350);

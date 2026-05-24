@@ -24,6 +24,10 @@ pub struct Cli {
     #[arg(long)]
     pub no_log: bool,
 
+    /// Send without any session: no history, no pool, nothing saved
+    #[arg(long)]
+    pub no_session: bool,
+
     /// Enable streaming output
     #[arg(long)]
     pub stream: bool,

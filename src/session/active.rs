@@ -40,9 +40,9 @@ pub fn resolve(flag: Option<&str>, data_dir: &Path) -> anyhow::Result<String> {
             return Ok(id);
         }
     }
-    let sess = Session::create(data_dir)?;
-    set_active(data_dir, &sess.id)?;
-    Ok(sess.id)
+    let session = Session::create(data_dir)?;
+    set_active(data_dir, &session.id)?;
+    Ok(session.id)
 }
 
 #[cfg(test)]
@@ -90,10 +90,10 @@ mod tests {
     #[test]
     fn resolve_uses_active_file() {
         let tmp = make_data_dir();
-        let sess = Session::create(tmp.path()).unwrap();
-        set_active(tmp.path(), &sess.id).unwrap();
+        let session = Session::create(tmp.path()).unwrap();
+        set_active(tmp.path(), &session.id).unwrap();
         let id = resolve(None, tmp.path()).unwrap();
-        assert_eq!(id, sess.id);
+        assert_eq!(id, session.id);
     }
 
     #[test]

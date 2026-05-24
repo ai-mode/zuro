@@ -21,7 +21,7 @@ pub fn parse_frontmatter(src: &str) -> anyhow::Result<(CommandFrontmatter, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::{HistoryMode, InputDef};
+    use crate::commands::HistoryMode;
 
     #[test]
     fn parse_filename_returns_stem_as_is() {
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn empty_body_after_close() {
-        let src = "---\ndescription = \"x\"\n---\n";
+        let src = "---\ndescription: x\n---\n";
         let (fm, body) = parse_frontmatter(src).unwrap();
         assert_eq!(fm.description, Some("x".to_string()));
         assert_eq!(body, "");
