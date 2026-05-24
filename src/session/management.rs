@@ -171,6 +171,10 @@ mod tests {
         tmp
     }
 
+    fn isolate_from_env() {
+        std::env::remove_var(crate::constants::ENV_SESSION);
+    }
+
     fn make_exchange(role: &str, content: &str) -> Exchange {
         Exchange::now(role, content.to_string(), Default::default())
     }
@@ -194,6 +198,7 @@ mod tests {
 
     #[test]
     fn list_marks_active_session() {
+        isolate_from_env();
         let tmp = make_data_dir();
         let s1 = Session::create(tmp.path()).unwrap();
         Session::create(tmp.path()).unwrap();

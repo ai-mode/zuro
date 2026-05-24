@@ -57,6 +57,10 @@ mod tests {
         tmp
     }
 
+    fn isolate_from_env() {
+        std::env::remove_var(crate::constants::ENV_SESSION);
+    }
+
     #[test]
     fn get_active_returns_none_when_no_file() {
         let tmp = make_data_dir();
@@ -89,6 +93,7 @@ mod tests {
 
     #[test]
     fn resolve_uses_active_file() {
+        isolate_from_env();
         let tmp = make_data_dir();
         let session = Session::create(tmp.path()).unwrap();
         set_active(tmp.path(), &session.id).unwrap();
@@ -98,6 +103,7 @@ mod tests {
 
     #[test]
     fn resolve_creates_new_session_when_nothing_set() {
+        isolate_from_env();
         let tmp = make_data_dir();
         let id = resolve(None, tmp.path()).unwrap();
         assert_eq!(id.len(), 36);
@@ -106,6 +112,7 @@ mod tests {
 
     #[test]
     fn resolve_creates_new_session_when_active_file_points_to_deleted_session() {
+        isolate_from_env();
         let tmp = make_data_dir();
         set_active(tmp.path(), "00000000-0000-0000-0000-000000000000").unwrap();
         let id = resolve(None, tmp.path()).unwrap();
