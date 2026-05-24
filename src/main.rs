@@ -26,6 +26,7 @@ use uuid::Uuid;
 use std::collections::HashMap;
 
 use crate::cli::{Cli, CmdAction, Commands, CtxAction, MemoryAction, ProfileAction, SessionAction, ShellAction};
+use clap::CommandFactory;
 use crate::commands::{CommandDef, CommandLocation, HistoryMode};
 use crate::config::{Config, ProfileConfig};
 use crate::constants::{SESSION_ID_PREFIX_LEN, TIMEOUT_CHAT_SECS, TIMEOUT_MODELS_SECS, ZURO_DIR};
@@ -76,12 +77,16 @@ fn run() -> anyhow::Result<()> {
         };
     }
 
-    let prompt = match resolve_prompt(&cli)? {
-        Some(p) => p,
-        None    => anyhow::bail!(
-            "No prompt provided. Usage: ai <prompt>\n\
-             Or pipe text: echo 'question' | ai"
-        ),
+    let stdin_input = read_stdin_if_piped()?;
+    let (prompt, stdin_context) = match (cli.prompt.clone(), stdin_input) {
+        (Some(p), Some(s)) => (p, Some(s)),
+        (None,    Some(s)) => (s, None),
+        (Some(p), None)    => (p, None),
+        (None,    None)    => {
+            Cli::command().print_help()?;
+            println!();
+            return Ok(());
+        }
     };
 
     let (profile_name, profile_cfg) = config.active_profile(cli.profile.as_deref())?;
@@ -108,7 +113,7 @@ fn run() -> anyhow::Result<()> {
 
     let memory      = memory::load_memory(project_root.as_deref());
     let system_msg  = providers::assemble_system_message(project_root.as_deref(), cli.verbose);
-    let user_prefix = providers::assemble_user_prefix(&memory, &resolved, &[], cli.verbose);
+    let user_prefix = providers::assemble_user_prefix(&memory, &resolved, &[], stdin_context.as_deref(), cli.verbose);
 
     let final_user_content = combine_prefix_and_prompt(&user_prefix, &prompt);
     let exchange_id        = Uuid::new_v4().to_string();
@@ -199,13 +204,7 @@ fn handle_run(
 
     let collected_inputs = collect_inputs(&cmd_def.frontmatter.inputs, input)?;
 
-    let stdin_content = if !io::stdin().is_terminal() {
-        let mut s = String::new();
-        io::stdin().read_to_string(&mut s)?;
-        if s.trim().is_empty() { None } else { Some(s) }
-    } else {
-        None
-    };
+    let stdin_content = read_stdin_if_piped()?;
 
     let file_args = read_file_args(files)?;
 
@@ -226,7 +225,7 @@ fn handle_run(
 
     let memory      = memory::load_memory(project_root);
     let system_msg  = providers::assemble_system_message(project_root, cli.verbose);
-    let user_prefix = providers::assemble_user_prefix(&memory, &resolved, &file_args, cli.verbose);
+    let user_prefix = providers::assemble_user_prefix(&memory, &resolved, &file_args, None, cli.verbose);
 
     let cwd        = std::env::current_dir()
         .map(|p| p.to_string_lossy().into_owned())
@@ -583,17 +582,14 @@ fn read_file_args(paths: &[PathBuf]) -> anyhow::Result<Vec<FileArg>> {
     }).collect()
 }
 
-fn resolve_prompt(cli: &Cli) -> anyhow::Result<Option<String>> {
-    if let Some(p) = &cli.prompt {
-        return Ok(Some(p.clone()));
+fn read_stdin_if_piped() -> anyhow::Result<Option<String>> {
+    if io::stdin().is_terminal() {
+        return Ok(None);
     }
-    if !io::stdin().is_terminal() {
-        let mut s = String::new();
-        io::stdin().read_to_string(&mut s)?;
-        let s = s.trim().to_string();
-        return Ok(if s.is_empty() { None } else { Some(s) });
-    }
-    Ok(None)
+    let mut s = String::new();
+    io::stdin().read_to_string(&mut s)?;
+    let s = s.trim().to_string();
+    Ok(if s.is_empty() { None } else { Some(s) })
 }
 
 fn build_history(session: &Session, no_log: bool, limit: Option<usize>) -> anyhow::Result<Vec<ChatMessage>> {

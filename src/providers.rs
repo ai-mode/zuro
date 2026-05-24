@@ -35,6 +35,7 @@ pub fn assemble_user_prefix(
     memory:         &MemoryContent,
     resolved_items: &[ResolvedItem],
     files:          &[FileArg],
+    stdin:          Option<&str>,
     verbose:        bool,
 ) -> String {
     let mut parts = Vec::new();
@@ -60,6 +61,11 @@ pub fn assemble_user_prefix(
     for f in files {
         if verbose { eprintln!("[provider] file: {}", f.path); }
         parts.push(format_context_block(&format!("file: {}", f.path), &f.content));
+    }
+
+    if let Some(content) = stdin {
+        if verbose { eprintln!("[provider] stdin"); }
+        parts.push(format_context_block("stdin", content));
     }
 
     parts.join("\n\n")
@@ -95,14 +101,14 @@ mod tests {
     #[test]
     fn assemble_user_prefix_empty_when_nothing() {
         let mem = MemoryContent { global: None, local: None, local_private: None };
-        let prefix = assemble_user_prefix(&mem, &[], &[], false);
+        let prefix = assemble_user_prefix(&mem, &[], &[], None, false);
         assert!(prefix.is_empty());
     }
 
     #[test]
     fn assemble_user_prefix_includes_global_memory() {
         let mem = MemoryContent { global: Some("global notes".into()), local: None, local_private: None };
-        let prefix = assemble_user_prefix(&mem, &[], &[], false);
+        let prefix = assemble_user_prefix(&mem, &[], &[], None, false);
         assert!(prefix.contains("[memory: global]"));
         assert!(prefix.contains("global notes"));
     }
@@ -111,7 +117,7 @@ mod tests {
     fn assemble_user_prefix_includes_pool_item() {
         let mem = MemoryContent { global: None, local: None, local_private: None };
         let pool = vec![ResolvedItem { label: "note".into(), content: "pool content".into() }];
-        let prefix = assemble_user_prefix(&mem, &pool, &[], false);
+        let prefix = assemble_user_prefix(&mem, &pool, &[], None, false);
         assert!(prefix.contains("[context: note]"));
         assert!(prefix.contains("pool content"));
     }
@@ -120,21 +126,31 @@ mod tests {
     fn assemble_user_prefix_includes_files() {
         let mem = MemoryContent { global: None, local: None, local_private: None };
         let files = vec![FileArg { path: "main.rs".into(), content: "fn main() {}".into() }];
-        let prefix = assemble_user_prefix(&mem, &[], &files, false);
+        let prefix = assemble_user_prefix(&mem, &[], &files, None, false);
         assert!(prefix.contains("[file: main.rs]"));
         assert!(prefix.contains("fn main() {}"));
     }
 
     #[test]
-    fn assemble_user_prefix_ordering_memory_then_pool_then_files() {
+    fn assemble_user_prefix_includes_stdin_context() {
+        let mem = MemoryContent { global: None, local: None, local_private: None };
+        let prefix = assemble_user_prefix(&mem, &[], &[], Some("piped input"), false);
+        assert!(prefix.contains("[stdin]"));
+        assert!(prefix.contains("piped input"));
+    }
+
+    #[test]
+    fn assemble_user_prefix_ordering_memory_then_pool_then_files_then_stdin() {
         let mem = MemoryContent { global: Some("mem".into()), local: None, local_private: None };
         let pool = vec![ResolvedItem { label: "ctx".into(), content: "pool".into() }];
         let files = vec![FileArg { path: "f.rs".into(), content: "file".into() }];
-        let prefix = assemble_user_prefix(&mem, &pool, &files, false);
-        let mem_pos  = prefix.find("[memory: global]").unwrap();
-        let pool_pos = prefix.find("[context: ctx]").unwrap();
-        let file_pos = prefix.find("[file: f.rs]").unwrap();
+        let prefix = assemble_user_prefix(&mem, &pool, &files, Some("stdin data"), false);
+        let mem_pos   = prefix.find("[memory: global]").unwrap();
+        let pool_pos  = prefix.find("[context: ctx]").unwrap();
+        let file_pos  = prefix.find("[file: f.rs]").unwrap();
+        let stdin_pos = prefix.find("[stdin]").unwrap();
         assert!(mem_pos < pool_pos);
         assert!(pool_pos < file_pos);
+        assert!(file_pos < stdin_pos);
     }
 }
