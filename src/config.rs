@@ -25,11 +25,32 @@ pub struct DefaultConfig {
     pub editor: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shell: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repl_submit_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repl_history_limit: Option<usize>,
 }
 
 impl Default for DefaultConfig {
     fn default() -> Self {
-        Self { profile: default_type(), show_stats: false, editor: None, shell: None }
+        Self {
+            profile:            default_type(),
+            show_stats:         false,
+            editor:             None,
+            shell:              None,
+            repl_submit_key:    None,
+            repl_history_limit: None,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum SubmitKey { CtrlEnter, Enter }
+
+pub fn resolve_submit_key(cfg: &DefaultConfig) -> SubmitKey {
+    match cfg.repl_submit_key.as_deref().unwrap_or("ctrl+enter") {
+        "enter" => SubmitKey::Enter,
+        _       => SubmitKey::CtrlEnter,
     }
 }
 
@@ -178,7 +199,14 @@ fn run_wizard() -> anyhow::Result<Config> {
     );
 
     Ok(Config {
-        default:  DefaultConfig { profile: "default".into(), show_stats: false, editor: None, shell: None },
+        default: DefaultConfig {
+            profile:            "default".into(),
+            show_stats:         false,
+            editor:             None,
+            shell:              None,
+            repl_submit_key:    None,
+            repl_history_limit: None,
+        },
         profiles,
     })
 }

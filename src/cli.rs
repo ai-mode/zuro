@@ -106,6 +106,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: CtxAction,
     },
+    /// Start an interactive chat session
+    Repl {
+        /// Limit how many recent exchanges are included in context (overrides config)
+        #[arg(long)]
+        history: Option<usize>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

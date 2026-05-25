@@ -8,6 +8,7 @@ mod output;
 mod pool;
 mod provider;
 mod providers;
+mod repl;
 mod session;
 mod shell_init;
 mod template;
@@ -73,6 +74,10 @@ fn run() -> anyhow::Result<()> {
                 let session_id = session::resolve(cli.session.as_deref(), &data_dir)?;
                 let session = Session::open(&data_dir, &session_id)?;
                 handle_context(action, &session, cli.verbose)
+            }
+            Commands::Repl { history } => {
+                let project_root = commands::find_project_root();
+                repl::run_repl(&cli, &config, &data_dir, project_root.as_deref(), history)
             }
         };
     }
@@ -147,7 +152,7 @@ fn run() -> anyhow::Result<()> {
     execute_chat_and_log(&*prov, &messages, session_opt.as_ref(), exchange_id, profile_name, &cli, show_stats)
 }
 
-fn execute_chat_and_log(
+pub(crate) fn execute_chat_and_log(
     prov:         &dyn Provider,
     messages:     &[ChatMessage],
     session:         Option<&Session>,
@@ -513,7 +518,7 @@ fn handle_context(action: CtxAction, session: &Session, verbose: bool) -> anyhow
     Ok(())
 }
 
-fn print_dry_run(messages: &[ChatMessage], provider: &dyn Provider, stream: bool) {
+pub(crate) fn print_dry_run(messages: &[ChatMessage], provider: &dyn Provider, stream: bool) {
     eprint!("{}", provider.dry_run_output(messages, stream));
 }
 
@@ -556,7 +561,7 @@ fn open_in_editor(path: &Path, config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn combine_prefix_and_prompt(prefix: &str, prompt: &str) -> String {
+pub(crate) fn combine_prefix_and_prompt(prefix: &str, prompt: &str) -> String {
     if prefix.is_empty() {
         prompt.to_string()
     } else {
@@ -592,7 +597,7 @@ fn read_stdin_if_piped() -> anyhow::Result<Option<String>> {
     Ok(if s.is_empty() { None } else { Some(s) })
 }
 
-fn build_history(session: &Session, no_log: bool, limit: Option<usize>) -> anyhow::Result<Vec<ChatMessage>> {
+pub(crate) fn build_history(session: &Session, no_log: bool, limit: Option<usize>) -> anyhow::Result<Vec<ChatMessage>> {
     if no_log { return Ok(vec![]); }
     let all = session.load_exchanges()?;
     let exchanges = match limit {
