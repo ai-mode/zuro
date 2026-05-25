@@ -1,7 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [unreleased](https://github.com/ai-mode/zuro/compare/v0.1.0...HEAD) - XXXX-XX-XX
+## [unreleased](https://github.com/ai-mode/zuro/compare/v0.2.0...HEAD) - XXXX-XX-XX
+
+---
+
+## [v0.2.0](https://github.com/ai-mode/zuro/compare/v0.1.0...v0.2.0) - 2026-05-25
+
+### New Features
+- Add `zuro repl` — interactive multi-turn chat mode with multiline input, Ctrl+Enter to send, profile and model displayed on startup; each invocation creates a new session automatically
+- Add kitty keyboard protocol support via reedline: Ctrl+Enter is a distinct key in iTerm2, kitty, WezTerm, Ghostty and other modern terminals
+- Add `--history` flag to `zuro repl` for limiting context depth per invocation
+- Add `repl_submit_key` and `repl_history_limit` config options under `[default]`
+- Add stdin-as-context: when both stdin and a prompt argument are given, stdin is injected as a `[stdin]` context block; invoking with no input prints help
+- Add `--no-session` flag for stateless one-off requests without session history or pool
+
+### Fixes
+- Include `providers.toml` in crate tarball
 
 ---
 
