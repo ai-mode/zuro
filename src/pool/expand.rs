@@ -7,8 +7,24 @@ use ignore::overrides::OverrideBuilder;
 
 use super::PoolItem;
 
+pub enum ResolvedItemKind {
+    Note,
+    File    { path: String },
+    Command { cmd: String, exit_code: i32 },
+}
+
+impl ResolvedItemKind {
+    pub fn display(&self) -> String {
+        match self {
+            Self::Note                      => "note".to_string(),
+            Self::File    { path }          => path.clone(),
+            Self::Command { cmd, exit_code } => format!("cmd: {cmd} (exit {exit_code})"),
+        }
+    }
+}
+
 pub struct ResolvedItem {
-    pub label:   String,
+    pub kind:    ResolvedItemKind,
     pub content: String,
 }
 
@@ -46,13 +62,16 @@ pub fn expand_pool(pool: &[PoolItem], shell: &str, verbose: bool) -> anyhow::Res
         match item {
             PoolItem::Text { content } => {
                 if verbose { eprintln!("[pool] text note"); }
-                result.push(ResolvedItem { label: "note".into(), content: content.clone() });
+                result.push(ResolvedItem { kind: ResolvedItemKind::Note, content: content.clone() });
             }
             PoolItem::File { path } => {
                 if verbose { eprintln!("[pool] file: {}", path.display()); }
                 let content = std::fs::read_to_string(path)
                     .with_context(|| format!("Cannot read pool file: {}", path.display()))?;
-                result.push(ResolvedItem { label: path.to_string_lossy().into_owned(), content });
+                result.push(ResolvedItem {
+                    kind: ResolvedItemKind::File { path: path.to_string_lossy().into_owned() },
+                    content,
+                });
             }
             PoolItem::Glob { pattern, base } => {
                 if verbose { eprintln!("[pool] glob: {pattern} in {}", base.display()); }
@@ -64,7 +83,10 @@ pub fn expand_pool(pool: &[PoolItem], shell: &str, verbose: bool) -> anyhow::Res
                     format!("Cannot read glob match '{}' (pattern '{}' in '{}')", p.display(), pattern, base.display())
                 })? {
                     if verbose { eprintln!("[pool]   → {}", path.display()); }
-                    result.push(ResolvedItem { label: path.to_string_lossy().into_owned(), content });
+                    result.push(ResolvedItem {
+                        kind: ResolvedItemKind::File { path: path.to_string_lossy().into_owned() },
+                        content,
+                    });
                 }
             }
             PoolItem::Dir { path } => {
@@ -74,7 +96,10 @@ pub fn expand_pool(pool: &[PoolItem], shell: &str, verbose: bool) -> anyhow::Res
                     format!("Cannot read file '{}' from directory '{}'", p.display(), path.display())
                 })? {
                     if verbose { eprintln!("[pool]   → {}", file_path.display()); }
-                    result.push(ResolvedItem { label: file_path.to_string_lossy().into_owned(), content });
+                    result.push(ResolvedItem {
+                        kind: ResolvedItemKind::File { path: file_path.to_string_lossy().into_owned() },
+                        content,
+                    });
                 }
             }
             PoolItem::Command { cmd } => {
@@ -88,7 +113,7 @@ pub fn expand_pool(pool: &[PoolItem], shell: &str, verbose: bool) -> anyhow::Res
                 let content   = String::from_utf8_lossy(&output.stdout).into_owned();
                 if verbose { eprintln!("[pool]   exit_code={exit_code}"); }
                 result.push(ResolvedItem {
-                    label: format!("cmd: {cmd} (exit {exit_code})"),
+                    kind: ResolvedItemKind::Command { cmd: cmd.clone(), exit_code },
                     content,
                 });
             }
@@ -110,7 +135,7 @@ mod tests {
         let items = vec![PoolItem::Text { content: "hello".into() }];
         let resolved = expand_pool(&items, "sh", false).unwrap();
         assert_eq!(resolved.len(), 1);
-        assert_eq!(resolved[0].label, "note");
+        assert!(matches!(resolved[0].kind, ResolvedItemKind::Note));
         assert_eq!(resolved[0].content, "hello");
     }
 
@@ -122,7 +147,7 @@ mod tests {
         let items = vec![PoolItem::File { path: path.clone() }];
         let resolved = expand_pool(&items, "sh", false).unwrap();
         assert_eq!(resolved.len(), 1);
-        assert!(resolved[0].label.contains("foo.txt"));
+        assert!(matches!(&resolved[0].kind, ResolvedItemKind::File { path } if path.contains("foo.txt")));
         assert_eq!(resolved[0].content, "bar content");
     }
 
@@ -161,6 +186,7 @@ mod tests {
         let items = vec![PoolItem::Command { cmd: "echo hello".into() }];
         let resolved = expand_pool(&items, "sh", false).unwrap();
         assert_eq!(resolved.len(), 1);
+        assert!(matches!(&resolved[0].kind, ResolvedItemKind::Command { exit_code: 0, .. }));
         assert!(resolved[0].content.contains("hello"));
     }
 
@@ -169,7 +195,7 @@ mod tests {
         let items = vec![PoolItem::Command { cmd: "echo err; exit 1".into() }];
         let resolved = expand_pool(&items, "sh", false).unwrap();
         assert_eq!(resolved.len(), 1);
+        assert!(matches!(&resolved[0].kind, ResolvedItemKind::Command { exit_code: 1, .. }));
         assert!(resolved[0].content.contains("err"));
-        assert!(resolved[0].label.contains("exit 1"));
     }
 }

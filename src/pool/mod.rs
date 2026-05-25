@@ -1,7 +1,7 @@
 mod expand;
 mod io;
 
-pub use expand::{expand_pool, ResolvedItem};
+pub use expand::{expand_pool, ResolvedItem, ResolvedItemKind};
 pub use io::{add_items, clear_pool, load_pool, remove_item};
 
 use std::path::PathBuf;
