@@ -48,6 +48,14 @@ Minimalist CLI for LLM conversations directly from the terminal.
 
 ## Installation
 
+**From crates.io:**
+
+```bash
+cargo install zuro
+```
+
+**From source:**
+
 ```bash
 git clone <repo> ~/zuro
 cd ~/zuro
