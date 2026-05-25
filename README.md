@@ -9,6 +9,7 @@ Minimalist CLI for LLM conversations directly from the terminal.
 - [First run](#first-run)
 - [Usage](#usage)
   - [Flags](#flags)
+- [REPL](#repl)
 - [Sessions](#sessions)
   - [Shell integration](#shell-integration)
   - [Global session](#global-session)
@@ -34,6 +35,7 @@ Minimalist CLI for LLM conversations directly from the terminal.
 ## Features
 
 - Single-shot prompts and pipe support
+- Interactive REPL (`zuro repl`) with multiline input and Ctrl+Enter to send
 - Streaming output (`--stream`)
 - Sessions: conversation history persists across invocations
 - Named commands: reusable prompt templates with frontmatter-based behaviour
@@ -121,6 +123,42 @@ cat file.rs | zuro --dry-run run fix
 | `--progress` | Show animated progress bar while waiting for response |
 | `--dry-run` | Print the assembled request to stderr without sending |
 | `-v, --verbose` | Dump requests/responses to stderr |
+
+## REPL
+
+`zuro repl` opens an interactive multi-turn chat session in the terminal.
+
+```bash
+zuro repl                        # new session, Ctrl+Enter to send
+zuro repl --session <id>         # resume an existing session
+zuro repl --no-session           # stateless, nothing saved
+zuro repl --history 10           # limit context to last 10 exchanges
+zuro repl --profile anthropic    # use a specific profile
+```
+
+**Key bindings (default):**
+
+| Key | Action |
+|-----|--------|
+| Ctrl+Enter | Send message |
+| Enter | Insert newline (multiline input) |
+| Ctrl+C / Ctrl+D | Quit |
+| ↑ / ↓ | Navigate input history |
+
+> Ctrl+Enter requires a terminal with kitty keyboard protocol support (iTerm2, kitty, WezTerm, Ghostty, Alacritty). In other terminals use **Ctrl+J** as an equivalent.
+>
+> Set `repl_submit_key = "enter"` in config to send with plain Enter instead.
+
+**Session behaviour:**
+
+Each `zuro repl` invocation automatically creates a new session. Pass `--session <id>` to resume an existing one, or `--no-session` for a stateless run.
+
+**Config options** (under `[default]`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `repl_submit_key` | `"ctrl+enter"` | Submit key: `ctrl+enter` or `enter` |
+| `repl_history_limit` | *(all)* | Max exchanges included in context |
 
 ## Sessions
 
@@ -509,9 +547,13 @@ zuro models --profile anthropic
 ```toml
 [default]
 profile    = "openai"
-show_stats = false   # set to true to always print token usage after each response
-editor     = "code --wait"   # used by `zuro commands edit`; falls back to $EDITOR, then vi
-shell      = "zsh"           # used for pool command items; falls back to $SHELL, then sh
+show_stats = false          # always print token usage after each response
+editor     = "code --wait"  # used by `zuro commands edit`; falls back to $EDITOR, then vi
+shell      = "zsh"          # used for pool command items; falls back to $SHELL, then sh
+
+# REPL settings
+repl_submit_key    = "ctrl+enter"  # or "enter"
+repl_history_limit = 20            # max exchanges included in context (omit for unlimited)
 
 [profiles.openai]
 type     = "openai"
