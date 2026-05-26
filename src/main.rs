@@ -27,6 +27,7 @@ use uuid::Uuid;
 use std::collections::HashMap;
 
 use crate::cli::{Cli, CmdAction, Commands, CtxAction, MemoryAction, ProfileAction, SessionAction, ShellAction};
+use crate::pool::PoolSource;
 use clap::CommandFactory;
 use crate::commands::{CommandDef, CommandLocation, HistoryMode};
 use crate::config::{Config, ProfileConfig};
@@ -71,9 +72,9 @@ fn run() -> anyhow::Result<()> {
                 handle_memory(action, project_root.as_deref())
             }
             Commands::Context { action } => {
-                let session_id = session::resolve(cli.session.as_deref(), &data_dir)?;
-                let session = Session::open(&data_dir, &session_id)?;
-                handle_context(action, &session, cli.verbose)
+                let project_root = commands::find_project_root();
+                let project_cfg  = config::load_project_config(project_root.as_deref());
+                handle_context(action, project_root.as_deref(), &project_cfg, cli.verbose)
             }
             Commands::Repl { history } => {
                 let project_root = commands::find_project_root();
@@ -104,13 +105,14 @@ fn run() -> anyhow::Result<()> {
     );
 
     let project_root = commands::find_project_root();
+    let project_cfg  = config::load_project_config(project_root.as_deref());
 
     let (session_opt, resolved) = if cli.no_session {
         (None, vec![])
     } else {
         let session_id = session::resolve(cli.session.as_deref(), &data_dir)?;
-        let session       = Session::open(&data_dir, &session_id)?;
-        let pool_items = pool::load_pool(&session.dir)?;
+        let session    = Session::open(&data_dir, &session_id)?;
+        let pool_items = pool::load_execution_pool(project_root.as_deref(), &project_cfg)?;
         let shell      = config::resolve_shell(&config.default);
         let expanded   = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
         (Some(session), expanded)
@@ -217,12 +219,14 @@ fn handle_run(
     let mut actual_cfg = profile_cfg.clone();
     if let Some(m) = &cli.model { actual_cfg.model = m.clone(); }
 
+    let project_cfg = config::load_project_config(project_root);
+
     let (session_opt, resolved) = if cli.no_session {
         (None, vec![])
     } else {
         let session_id = session::resolve(cli.session.as_deref(), data_dir)?;
-        let session       = Session::open(data_dir, &session_id)?;
-        let pool_items = pool::load_pool(&session.dir)?;
+        let session    = Session::open(data_dir, &session_id)?;
+        let pool_items = pool::load_execution_pool(project_root, &project_cfg)?;
         let shell      = config::resolve_shell(&config.default);
         let expanded   = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
         (Some(session), expanded)
@@ -444,9 +448,33 @@ fn handle_memory(action: MemoryAction, project_root: Option<&Path>) -> anyhow::R
     Ok(())
 }
 
-fn handle_context(action: CtxAction, session: &Session, verbose: bool) -> anyhow::Result<()> {
+fn handle_context(
+    action:      CtxAction,
+    project_root: Option<&Path>,
+    project_cfg:  &config::ProjectConfig,
+    verbose:      bool,
+) -> anyhow::Result<()> {
     match action {
-        CtxAction::Add { paths, text, cmd } => {
+        CtxAction::Add { paths, text, cmd, project, global } => {
+            anyhow::ensure!(
+                !(project && global),
+                "--project and --global are mutually exclusive"
+            );
+
+            let target = if global {
+                pool::global_pool_path()
+            } else if project {
+                project_root
+                    .map(pool::project_pool_path)
+                    .ok_or_else(|| anyhow::anyhow!(
+                        "--project requires a project root (.zuro/ or .git/)"
+                    ))?
+            } else {
+                project_root
+                    .map(pool::local_pool_path)
+                    .unwrap_or_else(pool::global_pool_path)
+            };
+
             let cwd = std::env::current_dir()?;
             let mut items: Vec<PoolItem> = Vec::new();
 
@@ -479,27 +507,29 @@ fn handle_context(action: CtxAction, session: &Session, verbose: bool) -> anyhow
                 items.push(PoolItem::Command { cmd: c });
             }
 
-            pool::add_items(&session.dir, items)?;
-            if verbose { eprintln!("[context] pool updated"); }
+            pool::add_items(&target, items)?;
+            if verbose { eprintln!("[context] pool updated: {}", target.display()); }
         }
         CtxAction::List => {
-            let items = pool::load_pool(&session.dir)?;
-            if items.is_empty() {
+            let tagged = pool::load_tagged_pool(project_root, project_cfg)?;
+            if tagged.is_empty() {
                 println!("Pool is empty.");
             } else {
-                for (i, item) in items.iter().enumerate() {
-                    println!("{i}. {}", pool_item_label(item));
+                for (i, t) in tagged.iter().enumerate() {
+                    let src = pool_source_tag(t.source);
+                    println!("{i}. {src} {}", pool_item_label(&t.item));
                 }
             }
         }
         CtxAction::Remove => {
-            let items = pool::load_pool(&session.dir)?;
-            if items.is_empty() {
+            let tagged = pool::load_tagged_pool(project_root, project_cfg)?;
+            if tagged.is_empty() {
                 println!("Pool is empty.");
                 return Ok(());
             }
-            for (i, item) in items.iter().enumerate() {
-                println!("{i}. {}", pool_item_label(item));
+            for (i, t) in tagged.iter().enumerate() {
+                let src = pool_source_tag(t.source);
+                println!("{i}. {src} {}", pool_item_label(&t.item));
             }
             print!("Enter index to remove: ");
             io::stdout().flush()?;
@@ -507,15 +537,86 @@ fn handle_context(action: CtxAction, session: &Session, verbose: bool) -> anyhow
             io::stdin().lock().read_line(&mut line)?;
             let idx: usize = line.trim().parse()
                 .map_err(|_| anyhow::anyhow!("Invalid index"))?;
-            pool::remove_item(&session.dir, idx)?;
+            anyhow::ensure!(idx < tagged.len(), "Index {idx} out of range");
+
+            let selected = &tagged[idx];
+            let within_file_idx = tagged[..idx].iter()
+                .filter(|t| t.source == selected.source)
+                .count();
+            let path = pool_source_path(selected.source, project_root)?;
+            pool::remove_item(&path, within_file_idx)?;
             eprintln!("Item {idx} removed.");
         }
-        CtxAction::Clear => {
-            pool::clear_pool(&session.dir)?;
+        CtxAction::Clear { project, local, global, yes } => {
+            let targets = resolve_clear_targets(project, local, global, project_root)?;
+
+            if !yes {
+                if !io::stdin().is_terminal() {
+                    anyhow::bail!("Non-interactive mode: use --yes to confirm");
+                }
+                print!("Clear pool? [y/N] ");
+                io::stdout().flush()?;
+                let mut answer = String::new();
+                io::stdin().read_line(&mut answer)?;
+                if answer.trim().to_lowercase() != "y" {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+
+            for path in targets {
+                pool::clear_pool(&path)?;
+            }
             eprintln!("Pool cleared.");
         }
     }
     Ok(())
+}
+
+fn pool_source_tag(source: PoolSource) -> &'static str {
+    match source {
+        PoolSource::Global  => "[G]",
+        PoolSource::Project => "[P]",
+        PoolSource::Local   => "[L]",
+    }
+}
+
+fn pool_source_path(source: PoolSource, project_root: Option<&Path>) -> anyhow::Result<std::path::PathBuf> {
+    match source {
+        PoolSource::Global  => Ok(pool::global_pool_path()),
+        PoolSource::Project => project_root
+            .map(pool::project_pool_path)
+            .ok_or_else(|| anyhow::anyhow!("No project root")),
+        PoolSource::Local   => project_root
+            .map(pool::local_pool_path)
+            .ok_or_else(|| anyhow::anyhow!("No project root")),
+    }
+}
+
+fn resolve_clear_targets(
+    project:      bool,
+    local:        bool,
+    global:       bool,
+    project_root: Option<&Path>,
+) -> anyhow::Result<Vec<std::path::PathBuf>> {
+    let none_specified = !project && !local && !global;
+    anyhow::ensure!(
+        !none_specified,
+        "Specify at least one of --project, --local, --global"
+    );
+    let mut paths = Vec::new();
+    if global  { paths.push(pool::global_pool_path()); }
+    if project {
+        paths.push(project_root
+            .map(pool::project_pool_path)
+            .ok_or_else(|| anyhow::anyhow!("--project requires a project root"))?);
+    }
+    if local {
+        paths.push(project_root
+            .map(pool::local_pool_path)
+            .ok_or_else(|| anyhow::anyhow!("--local requires a project root"))?);
+    }
+    Ok(paths)
 }
 
 pub(crate) fn print_dry_run(messages: &[ChatMessage], provider: &dyn Provider, stream: bool) {

@@ -46,18 +46,27 @@ pub fn run_repl(
     let mut actual_cfg = profile_cfg.clone();
     if let Some(m) = &cli.model { actual_cfg.model = m.clone(); }
 
+    let project_cfg = config::load_project_config(project_root);
+    let pool_items  = if cli.no_session {
+        vec![]
+    } else {
+        let shell = config::resolve_shell(&config.default);
+        pool::expand_pool(
+            &pool::load_execution_pool(project_root, &project_cfg)?,
+            &shell,
+            cli.verbose,
+        )?
+    };
+
     let (session_opt, resolved) = if cli.no_session {
         (None, vec![])
     } else if let Some(ref session_id) = cli.session {
-        let session    = Session::open(data_dir, session_id)?;
-        let pool_items = pool::load_pool(&session.dir)?;
-        let shell      = config::resolve_shell(&config.default);
-        let expanded   = pool::expand_pool(&pool_items, &shell, cli.verbose)?;
-        (Some(session), expanded)
+        let session = Session::open(data_dir, session_id)?;
+        (Some(session), pool_items)
     } else {
         let session = Session::create(data_dir)?;
         if cli.verbose { eprintln!("[repl] new session: {}", session.id); }
-        (Some(session), vec![])
+        (Some(session), pool_items)
     };
 
     let memory        = memory::load_memory(project_root);

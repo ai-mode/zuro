@@ -1,3 +1,4 @@
 .ai-workspace/
 .zuro/audit/*
 target/*
+log.txt

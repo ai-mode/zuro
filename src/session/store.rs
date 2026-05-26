@@ -219,16 +219,7 @@ mod tests {
         assert_eq!(exchanges[0].content, "a");
     }
 
-    #[test]
-    fn fork_does_not_copy_pool() {
-        let tmp = make_data_dir();
-        let session = Session::create(tmp.path()).unwrap();
-        fs::write(session.dir.join("pool.json"), "[]").unwrap();
-        let forked = session.fork(tmp.path()).unwrap();
-        assert!(!forked.dir.join("pool.json").exists());
-    }
-
-    #[test]
+#[test]
     fn fork_sets_forked_from_in_header() {
         let tmp = make_data_dir();
         let session = Session::create(tmp.path()).unwrap();

@@ -18,11 +18,14 @@ pub const HISTORY_FILE:          &str  = "history.jsonl";
 pub const POOL_FILE:             &str  = "pool.json";
 
 // .zuro directory structure
-pub const ZURO_DIR:          &str = ".zuro";
-pub const COMMANDS_SUBDIR:   &str = "commands";
-pub const MEMORY_FILE:       &str = "memory.md";
-pub const MEMORY_LOCAL_FILE: &str = "memory.local.md";
-pub const SYSTEM_FILE:       &str = "system.md";
+pub const ZURO_DIR:            &str = ".zuro";
+pub const COMMANDS_SUBDIR:     &str = "commands";
+pub const MEMORY_FILE:         &str = "memory.md";
+pub const MEMORY_LOCAL_FILE:   &str = "memory.local.md";
+pub const SYSTEM_FILE:         &str = "system.md";
+pub const POOL_PROJECT_FILE:   &str = "pool.json";
+pub const POOL_LOCAL_FILE:     &str = "pool.local.json";
+pub const PROJECT_CONFIG_FILE: &str = "config.toml";
 
 // RFC 3339 timestamp slicing
 pub const DATETIME_DISPLAY_LEN: usize = 16; // "YYYY-MM-DDTHH:MM"

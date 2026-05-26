@@ -272,11 +272,30 @@ pub enum CtxAction {
         /// Shell command whose stdout is included in context (re-run each request)
         #[arg(long)]
         cmd: Option<String>,
+        /// Write to project pool (.zuro/pool.json)
+        #[arg(long)]
+        project: bool,
+        /// Write to global pool (~/.zuro/pool.json)
+        #[arg(long)]
+        global: bool,
     },
-    /// List pool items for the active session
+    /// List pool items across all active levels
     List,
     /// Remove a pool item interactively
     Remove,
-    /// Clear all pool items for the active session
-    Clear,
+    /// Clear pool items
+    Clear {
+        /// Clear project pool (.zuro/pool.json)
+        #[arg(long)]
+        project: bool,
+        /// Clear local pool (.zuro/pool.local.json)
+        #[arg(long)]
+        local: bool,
+        /// Clear global pool (~/.zuro/pool.json)
+        #[arg(long)]
+        global: bool,
+        /// Skip confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }

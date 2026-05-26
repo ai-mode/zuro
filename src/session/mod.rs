@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::constants::{
-    ACTIVE_SESSION_FILE, HISTORY_FILE, META_FILE, POOL_FILE, SESSIONS_SUBDIR,
+    ACTIVE_SESSION_FILE, HISTORY_FILE, META_FILE, SESSIONS_SUBDIR,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -100,5 +100,3 @@ fn active_path(data_dir: &Path) -> PathBuf  { data_dir.join(ACTIVE_SESSION_FILE)
 fn session_dir(data_dir: &Path, id: &str) -> PathBuf { sessions_dir(data_dir).join(id) }
 fn history_path(dir: &Path) -> PathBuf { dir.join(HISTORY_FILE) }
 fn meta_path(dir: &Path) -> PathBuf    { dir.join(META_FILE) }
-#[allow(dead_code)]
-fn pool_path(dir: &Path) -> PathBuf    { dir.join(POOL_FILE) }

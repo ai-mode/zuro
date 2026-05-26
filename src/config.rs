@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::io::{self, BufRead, IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::constants::{ZURO_DIR, PROJECT_CONFIG_FILE};
 use crate::defaults;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +53,43 @@ pub fn resolve_submit_key(cfg: &DefaultConfig) -> SubmitKey {
         "enter" => SubmitKey::Enter,
         _       => SubmitKey::CtrlEnter,
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProjectConfig {
+    #[serde(default)]
+    pub pool: PoolConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolConfig {
+    #[serde(default)]
+    pub use_global:  bool,
+    #[serde(default)]
+    pub local_merge: LocalMerge,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self { use_global: false, local_merge: LocalMerge::Append }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum LocalMerge {
+    #[default]
+    Append,
+    Replace,
+}
+
+pub fn load_project_config(project_root: Option<&Path>) -> ProjectConfig {
+    let Some(root) = project_root else { return ProjectConfig::default(); };
+    let path = root.join(ZURO_DIR).join(PROJECT_CONFIG_FILE);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or_default()
 }
 
 pub fn resolve_editor(cfg: &DefaultConfig) -> String {
