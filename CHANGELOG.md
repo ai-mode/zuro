@@ -1,7 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [unreleased](https://github.com/ai-mode/zuro/compare/v0.2.0...HEAD) - XXXX-XX-XX
+## [unreleased](https://github.com/ai-mode/zuro/compare/v0.3.0...HEAD) - XXXX-XX-XX
+
+---
+
+## [v0.3.0](https://github.com/ai-mode/zuro/compare/v0.2.0...v0.3.0) - 2026-05-26
 
 ### New Features
 - Replace per-session context pool with a three-level hierarchy: global (`~/.zuro/pool.json`), project (`.zuro/pool.json`), and local (`.zuro/pool.local.json`); pool files live in the project tree, sessions store conversation history only
