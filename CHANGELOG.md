@@ -3,6 +3,13 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased](https://github.com/ai-mode/zuro/compare/v0.2.0...HEAD) - XXXX-XX-XX
 
+### New Features
+- Replace per-session context pool with a three-level hierarchy: global (`~/.zuro/pool.json`), project (`.zuro/pool.json`), and local (`.zuro/pool.local.json`); pool files live in the project tree, sessions store conversation history only
+- Add `zuro context add --project` and `--global` flags to target a specific pool level; default writes to local pool (or global when outside a project)
+- Add source tags `[G]`/`[P]`/`[L]` to `zuro context list` output
+- Add `zuro context clear --project`/`--local`/`--global` flags to clear specific levels
+- Add `.zuro/config.toml` project config with `[pool]` section: `use_global` (opt-in global pool) and `local_merge` (`append` or `replace`)
+
 ---
 
 ## [v0.2.0](https://github.com/ai-mode/zuro/compare/v0.1.0...v0.2.0) - 2026-05-25

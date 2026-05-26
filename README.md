@@ -39,7 +39,7 @@ Minimalist CLI for LLM conversations directly from the terminal.
 - Streaming output (`--stream`)
 - Sessions: conversation history persists across invocations
 - Named commands: reusable prompt templates with frontmatter-based behaviour
-- Context pool: attach files, directories, globs, or shell commands to a session
+- Context pool: three-level (global / project / local) persistent context attached to every request
 - Memory files: persistent global and per-project instructions for the model
 - Multiple profiles in one config (OpenAI-compatible APIs and Anthropic)
 - JSON output for scripting
@@ -470,41 +470,62 @@ zuro memory clear --local --yes
 
 ## Context pool
 
-The context pool attaches persistent items to a session. On every request, pool items are resolved and injected into the context automatically — no need to repeat `--file` flags or re-paste content.
+The context pool injects persistent items into every request automatically — no need to repeat `--file` flags or re-paste content. It has three levels that are merged on each invocation:
+
+| Level | File | Typical use |
+|-------|------|-------------|
+| Global | `~/.zuro/pool.json` | Tools and snippets useful everywhere |
+| Project | `.zuro/pool.json` | Shared team context — commit to VCS |
+| Local | `.zuro/pool.local.json` | Personal additions — add to `.gitignore` |
 
 ```bash
-# Add individual files
+# Add to local pool (default when inside a project)
 zuro context add src/session.rs src/main.rs
-
-# Add a directory (respects .gitignore and .zuro-ignore)
-zuro context add src/
-
-# Add a glob pattern
-zuro context add "src/**/*.rs"
-
-# Add an inline text note
+zuro context add src/                        # directory (respects .gitignore and .zuro-ignore)
+zuro context add "src/**/*.rs"               # glob
 zuro context add --text "The bug is in fork_at"
-
-# Add a text note from stdin
-git diff | zuro context add --text
-
-# Add a shell command (re-executed on every request)
-zuro context add --cmd "git log --oneline -20"
+git diff | zuro context add --text           # text from stdin
+zuro context add --cmd "git log --oneline -20"   # shell command, re-run on each request
 zuro context add --cmd "cargo check 2>&1"
 
-# List pool items
-zuro context list
+# Write to a specific level
+zuro context add --project src/main.rs      # → .zuro/pool.json
+zuro context add --global ~/.zuro/snippets/ # → ~/.zuro/pool.json
 
-# Remove an item interactively
+# List all active pool items (shows source level)
+zuro context list
+# 0. [P] file: src/main.rs
+# 1. [L] note: The bug is in fork_at
+# 2. [G] cmd: git log --oneline -20 (exit 0)
+
+# Remove an item interactively (select by index, correct file is updated automatically)
 zuro context remove
 
-# Clear all pool items
-zuro context clear
+# Clear pool items by level
+zuro context clear --local
+zuro context clear --project
+zuro context clear --global
+zuro context clear --local --project   # multiple levels at once
 ```
 
-File contents are read at request time, not when added. This means pool items always reflect the current state of the files.
+File contents are read at request time, not when added. Pool items always reflect the current state of files.
 
-Ignore rules are resolved in order (last match wins):
+### Project pool config
+
+Control merge behaviour in `.zuro/config.toml`:
+
+```toml
+[pool]
+use_global  = false    # include ~/.zuro/pool.json (default: false)
+local_merge = "append" # "append": project + local (default)
+                       # "replace": local pool only, project pool is ignored
+```
+
+When `use_global` is false (the default), the global pool is excluded unless the current directory has no project root, in which case the global pool is used as fallback.
+
+### Ignore rules
+
+Resolved in order (last match wins):
 1. `~/.zuro/.zuro-ignore` — global
 2. `<project>/.gitignore`
 3. `<project>/.zuro-ignore`
@@ -583,19 +604,32 @@ model    = "llama3.2"
 
 The `openai` type works with any OpenAI-compatible API (Ollama, vLLM, LM Studio, etc.).
 
+### Project config
+
+`.zuro/config.toml` (per-project, commit to VCS):
+
+```toml
+[pool]
+use_global  = false    # include ~/.zuro/pool.json in every request
+local_merge = "append" # "append" (default) or "replace"
+```
+
 ## Files
 
 | Path | Description |
 |------|-------------|
-| `~/.config/zuro/config.toml` | Configuration |
+| `~/.config/zuro/config.toml` | Global configuration |
 | `~/.local/share/zuro/sessions/<uuid>/meta.json` | Session metadata |
 | `~/.local/share/zuro/sessions/<uuid>/history.jsonl` | Session exchange history |
-| `~/.local/share/zuro/sessions/<uuid>/pool.json` | Session context pool |
 | `~/.local/share/zuro/active_session` | Global active session ID |
+| `~/.zuro/pool.json` | Global context pool |
 | `~/.zuro/memory.md` | Global memory |
 | `~/.zuro/commands/` | Global named commands |
+| `.zuro/config.toml` | Project config (commit to VCS) |
+| `.zuro/pool.json` | Project context pool (commit to VCS) |
+| `.zuro/pool.local.json` | Personal context pool (.gitignore this) |
 | `.zuro/memory.md` | Project memory (commit to VCS) |
-| `.zuro/memory.local.md` | Project private memory (.gitignore this) |
+| `.zuro/memory.local.md` | Personal project memory (.gitignore this) |
 | `.zuro/commands/` | Project named commands |
 | `.zuro/system.md` | Project system instructions |
 | `.zuro-ignore` | Ignore rules for context pool file expansion |
